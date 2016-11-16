@@ -51,8 +51,9 @@ var ChatConnector = (function () {
         var _this = this;
         var token;
         var isEmulator = req.body['channelId'] === 'emulator';
-        if (req.headers && req.headers.hasOwnProperty('authorization')) {
-            var auth = req.headers['authorization'].trim().split(' ');
+        var authHeaderValue = req.headers ? req.headers['authorization'] || req.headers['Authorization'] : null;
+        if (authHeaderValue) {
+            var auth = authHeaderValue.trim().split(' ');
             if (auth.length == 2 && auth[0].toLowerCase() == 'bearer') {
                 token = auth[1];
             }
@@ -62,7 +63,13 @@ var ChatConnector = (function () {
             var decoded = jwt.decode(token, { complete: true });
             var verifyOptions;
             var openIdMetadata;
-            if (isEmulator && decoded.payload.iss == this.settings.endpoint.msaIssuer) {
+            if (decoded.payload.iss == this.settings.endpoint.msaIssuer) {
+                if(decoded.payload.appid !== this.settings.appId) {
+                    logger.error('ChatConnector: receive - invalid token. Check bot\'s app ID.');
+                    res.status(403);
+                    res.end();
+                    return;
+                }
                 openIdMetadata = this.msaOpenIdMetadata;
                 verifyOptions = {
                     issuer: this.settings.endpoint.msaIssuer,

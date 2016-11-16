@@ -54,6 +54,10 @@ export interface IBeginDialogActionOptions extends IDialogActionOptions {
     dialogArgs?: any;
 }
 
+export interface ICancelActionOptions extends IDialogActionOptions {
+    confirmPrompt?: string|string[]|IMessage|IIsMessage;
+}
+
 export interface IActionRouteData {
     action?: string;
     intent?: IIntentRecognizerResult;
@@ -216,9 +220,15 @@ export class ActionSet {
         }
     }
 
-    public cancelAction(name: string, msg?: string|string[]|IMessage|IIsMessage, options?: IDialogActionOptions): this {
+    public cancelAction(name: string, msg?: string|string[]|IMessage|IIsMessage, options?: ICancelActionOptions): this {
         return this.action(name, (session, args) => {
-            if (args && typeof args.dialogIndex === 'number') {
+            if (options.confirmPrompt) {
+                session.beginDialog(consts.DialogId.ConfirmCancel, {
+                    confirmPrompt: options.confirmPrompt,
+                    dialogIndex: args.dialogIndex,
+                    message: msg 
+                });
+            } else {
                 if (msg) {
                     session.send(msg)
                 }
@@ -245,13 +255,21 @@ export class ActionSet {
                 var lib = args.dialogId ? args.dialogId.split(':')[0] : args.libraryName;
                 id = lib + ':' + id;
             }
-            session.beginDialog(id, args);
+            session.beginDialog(consts.DialogId.Interruption, { dialogId: id, dialogArgs: args });
         }, options);
     }
 
-    public endConversationAction(name: string, msg?: string|string[]|IMessage|IIsMessage, options?: IDialogActionOptions): this {
+    public endConversationAction(name: string, msg?: string|string[]|IMessage|IIsMessage, options?: ICancelActionOptions): this {
         return this.action(name, (session, args) => {
-            session.endConversation(msg);
+            if (options.confirmPrompt) {
+                session.beginDialog(consts.DialogId.ConfirmCancel, {
+                    confirmPrompt: options.confirmPrompt,
+                    endConversation: true,
+                    message: msg 
+                });
+            } else {
+                session.endConversation(msg);
+            }
         }, options);
     }
 

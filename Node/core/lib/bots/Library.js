@@ -40,7 +40,7 @@ var Library = (function (_super) {
     Library.prototype.findRoutes = function (session, callback) {
         var _this = this;
         if (!this.triggersAdded) {
-            this.forEachDialog(function (dialog, id) { return dialog.addDialogTrigger(_this.actions, id); });
+            this.forEachDialog(function (dialog, id) { return dialog.addDialogTrigger(_this.actions, _this.name + ':' + id); });
             this.triggersAdded = true;
         }
         if (this._onFindRoutes) {
@@ -125,7 +125,7 @@ var Library = (function (_super) {
         context.intent = topIntent;
         context.libraryName = this.name;
         context.routeType = Library.RouteTypes.StackAction;
-        async.forEachOf((dialogStack || []).reverse(), function (entry, index, next) {
+        async.forEachOf(dialogStack || [], function (entry, index, next) {
             var parts = entry.id.split(':');
             if (parts[0] == _this.name) {
                 var dialog = _this.dialog(parts[1]);

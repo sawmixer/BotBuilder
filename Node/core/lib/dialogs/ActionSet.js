@@ -1,4 +1,5 @@
 "use strict";
+var consts = require('../consts');
 var utils = require('../utils');
 var async = require('async');
 var ActionSet = (function () {
@@ -147,7 +148,14 @@ var ActionSet = (function () {
     };
     ActionSet.prototype.cancelAction = function (name, msg, options) {
         return this.action(name, function (session, args) {
-            if (args && typeof args.dialogIndex === 'number') {
+            if (options.confirmPrompt) {
+                session.beginDialog(consts.DialogId.ConfirmCancel, {
+                    confirmPrompt: options.confirmPrompt,
+                    dialogIndex: args.dialogIndex,
+                    message: msg
+                });
+            }
+            else {
                 if (msg) {
                     session.send(msg);
                 }
@@ -174,12 +182,21 @@ var ActionSet = (function () {
                 var lib = args.dialogId ? args.dialogId.split(':')[0] : args.libraryName;
                 id = lib + ':' + id;
             }
-            session.beginDialog(id, args);
+            session.beginDialog(consts.DialogId.Interruption, { dialogId: id, dialogArgs: args });
         }, options);
     };
     ActionSet.prototype.endConversationAction = function (name, msg, options) {
         return this.action(name, function (session, args) {
-            session.endConversation(msg);
+            if (options.confirmPrompt) {
+                session.beginDialog(consts.DialogId.ConfirmCancel, {
+                    confirmPrompt: options.confirmPrompt,
+                    endConversation: true,
+                    message: msg
+                });
+            }
+            else {
+                session.endConversation(msg);
+            }
         }, options);
     };
     ActionSet.prototype.triggerAction = function (options) {

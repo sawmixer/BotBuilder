@@ -35,7 +35,7 @@ import { Session } from '../Session';
 import { IRecognizeContext, IRecognizeResult, IIntentRecognizerResult } from './IntentRecognizerSet';
 import { ActionSet } from './ActionSet';
 
-export enum ResumeReason { completed, notCompleted, canceled, back, forward }
+export enum ResumeReason { completed, notCompleted, canceled, back, forward, reprompt }
 
 export interface IDialogResult<T> {
     resumed: ResumeReason;
@@ -64,6 +64,6 @@ export abstract class Dialog extends ActionSet {
     }
 
     public recognize(context: IRecognizeDialogContext, cb: (err: Error, result: IRecognizeResult) => void): void {
-        cb(null, { score: 0.5 });
+        cb(null, { score: 0.1 });
     }
 }

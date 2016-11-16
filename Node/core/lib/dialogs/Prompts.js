@@ -330,3 +330,40 @@ function beginPrompt(session, args) {
     }
     session.beginDialog(consts.DialogId.Prompts, args);
 }
+Library_1.systemLib.dialog(consts.DialogId.ConfirmCancel, [
+    function (session, args) {
+        session.dialogData.dialogIndex = args.dialogIndex;
+        session.dialogData.message = args.message;
+        session.dialogData.endConversation = args.endConversation;
+        Prompts.confirm(session, args.confirmPrompt);
+    },
+    function (session, results) {
+        if (results.response) {
+            if (session.dialogData.message) {
+                session.send(session.dialogData.message);
+            }
+            if (session.dialogData.endConversation) {
+                session.endConversation();
+            }
+            else {
+                session.cancelDialog(session.dialogData.dialogIndex);
+            }
+        }
+        else {
+            session.endDialogWithResult({ resumed: Dialog_1.ResumeReason.reprompt });
+        }
+    }
+]);
+Library_1.systemLib.dialog(consts.DialogId.Interruption, [
+    function (session, args) {
+        if (session.sessionState.callstack.length > 1) {
+            session.beginDialog(args.dialogId, args.dialogArgs);
+        }
+        else {
+            session.replaceDialog(args.dialogId, args.dialogArgs);
+        }
+    },
+    function (session, results) {
+        session.endDialogWithResult({ resumed: Dialog_1.ResumeReason.reprompt });
+    }
+]);

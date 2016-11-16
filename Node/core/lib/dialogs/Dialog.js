@@ -11,6 +11,7 @@ var ActionSet_1 = require('./ActionSet');
     ResumeReason[ResumeReason["canceled"] = 2] = "canceled";
     ResumeReason[ResumeReason["back"] = 3] = "back";
     ResumeReason[ResumeReason["forward"] = 4] = "forward";
+    ResumeReason[ResumeReason["reprompt"] = 5] = "reprompt";
 })(exports.ResumeReason || (exports.ResumeReason = {}));
 var ResumeReason = exports.ResumeReason;
 var Dialog = (function (_super) {
@@ -27,7 +28,7 @@ var Dialog = (function (_super) {
         }
     };
     Dialog.prototype.recognize = function (context, cb) {
-        cb(null, { score: 0.5 });
+        cb(null, { score: 0.1 });
     };
     return Dialog;
 }(ActionSet_1.ActionSet));
