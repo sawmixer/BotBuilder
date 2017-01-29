@@ -433,15 +433,18 @@ export interface IRecognizeContext {
     /** Returns a copy of the current dialog stack for the session. */
     dialogStack(): IDialogState[];
 
+    /** (Optional) The top intent identified for the message. */
+    intent?: IIntentRecognizerResult;
+
+    /** (Optional) The name of the library passing the context is from. */
+    libraryName?: string;
+
     /** __DEPRECATED__ use [preferredLocale()](#preferredlocale) instead. */
     locale: string;
 }
 
 /** Context passed to `Dialog.recognize()`. */
 export interface IRecognizeDialogContext extends IRecognizeContext {
-    /** (Optional) The top intent identified for the message. */
-    intent?: IIntentRecognizerResult;
-
     /** If true the Dialog is the active dialog on the callstack. */
     activeDialog: boolean;
 
@@ -451,12 +454,6 @@ export interface IRecognizeDialogContext extends IRecognizeContext {
 
 /** Context passed to `ActionSet.findActionRoutes()`. */
 export interface IFindActionRouteContext extends IRecognizeContext {
-    /** (Optional) The top intent identified for the message. */
-    intent?: IIntentRecognizerResult;
-
-    /** The name of the library being searched over. */
-    libraryName: string;
-
     /** The type of route being searched for. */
     routeType: string;
 }
@@ -504,6 +501,29 @@ export interface IBeginDialogActionOptions extends IDialogActionOptions {
     dialogArgs?: any;
 }
 
+/** Options passed when defining a `triggerAction()`. */
+export interface ITriggerActionOptions extends IBeginDialogActionOptions {
+    /**
+     * If specified the user will be asked to confirm that they are ok canceling the current 
+     * uncompleted task.
+     * * _{string}_ - Initial message to send the user.
+     * * _{string[]}_ - Array of possible messages to send user. One will be chosen at random. 
+     * * _{IMessage}_ - Message to send the user. Message can contain attachments. 
+     * * _{IIsMessage}_ - Instance of the [Message](/en-us/node/builder/chat-reference/classes/_botbuilder_d_.message.html) builder class. 
+     */
+    confirmPrompt?: string|string[]|IMessage|IIsMessage;
+
+    /** 
+     * (Optional) custom handler called when a root dialog is being interrupted by another root 
+     * dialog. This gives the dialog an opportunity to perform custom cleanup logic or to prompt
+     * the user to confirm the interruption was intended. 
+     * 
+     * It's important to note that this is not a waterfall and you should call `next()` if you 
+     * would like the actions default behaviour to run. 
+     */
+    onInterrupted?: (session: Session, dialogId: string, dialogArgs?: any, next?: Function) => void;
+}
+
 /** Options passed when defining a `cancelAction()`. */
 export interface ICancelActionOptions extends IDialogActionOptions {
     /**
@@ -511,7 +531,7 @@ export interface ICancelActionOptions extends IDialogActionOptions {
      * action when triggered. 
      * * _{string}_ - Initial message to send the user.
      * * _{string[]}_ - Array of possible messages to send user. One will be chosen at random. 
-     * * _{IMessage}_ - Initial message to send the user. Message can contain attachments. 
+     * * _{IMessage}_ - Message to send the user. Message can contain attachments. 
      * * _{IIsMessage}_ - Instance of the [Message](/en-us/node/builder/chat-reference/classes/_botbuilder_d_.message.html) builder class. 
      */
     confirmPrompt?: string|string[]|IMessage|IIsMessage;
@@ -584,6 +604,23 @@ export interface IPromptArgs extends IPromptOptions {
 
     /** Enum values for a choice prompt. */
     enumsValues?: string[];
+}
+
+/** 
+ * Route choices to pass to [Prompts.diambiguate()](/en-us/node/builder/chat-reference/classes/_botbuilder_d_.prompts#disambiguate).
+ * The key for the map should be the localized label to display to the user and the value should be
+ * the route to select when chosen by the user.  You can pass `null` for the route to give the user the option to cancel.
+ * @example
+ * <pre><code>
+ * builder.Prompts.disambiguate(session, "What would you like to cancel?", {
+ *      "Cancel Item": cancelItemRoute,
+ *      "Cancel Order": cancelOrderRoute,
+ *      "Neither": null
+ * });
+ * </code></pre>
+ */
+export interface IDisambiguateChoices {
+    [label: string]: IRouteResult;
 }
 
 /** Dialog result returned by a system prompt. */
@@ -937,7 +974,7 @@ export interface IMiddlewareMap {
  * all of its parents to move to this hidden step which will cascade the close all the way up the stack.
  * This is typically a desired behaviour but if you want to avoid it or stop it somewhere in the 
  * middle you'll need to add a step to the end of your waterfall that either does nothing or calls 
- * something liek [session.send()](/en-us/node/builder/chat-reference/classes/_botbuilder_d_.session.html#send)
+ * something like [session.send()](/en-us/node/builder/chat-reference/classes/_botbuilder_d_.session.html#send)
  * which isn't going to advance the waterfall forward.   
  * @example
  * <pre><code>
@@ -1023,9 +1060,6 @@ export interface IRouteResult {
     /** Name of the library the route came from. */
     libraryName: string;
 
-    /** (Optional) display label for the route which can be presented to the user when disambiguting between routes. */
-    label?: string;
-
     /** (Optional) type of route returned. */
     routeType?: string;
 
@@ -1035,12 +1069,76 @@ export interface IRouteResult {
 
 /** Custom route searching logic passed to [Library.onFindRoutes()](/en-us/node/builder/chat-reference/classes/_botbuilder_d_.library#onfindroutes). */
 export interface IFindRoutesHandler {
-    (session: Session, callback: (err: Error, routes: IRouteResult[]) => void): void;
+    (context: IRecognizeContext, callback: (err: Error, routes: IRouteResult[]) => void): void;
 }
 
 /** Custom route searching logic passed to [Library.onSelectRoute()](/en-us/node/builder/chat-reference/classes/_botbuilder_d_.library#onselectroute). */
-export interface ISelectRoutheandler {
+export interface ISelectRouteHandler {
     (session: Session, route: IRouteResult): void;
+}
+
+/** Custom route disambiguation logic passed to [UniversalBot.onDisambiguateRoute()](/en-us/node/builder/chat-reference/classes/_botbuilder_d_.universalbot#ondisambiguateroute). */
+export interface IDisambiguateRouteHandler {
+    (session: Session, routes: IRouteResult[]): void;
+}
+
+/** Interface definition for a video card */
+export interface IVideoCard extends IMediaCard {
+
+    /** Hint of the aspect ratio of the video or animation. (16:9)(4:3) */
+    aspect: string;
+}
+
+/** Interface definition for an audio card */
+export interface IAudioCard extends IMediaCard {
+}
+
+/** Interface definition for an animation card */
+export interface IAnimationCard extends IMediaCard {
+
+    /** Hint of the aspect ratio of the video or animation. (16:9)(4:3) */
+    aspect: string;
+}
+
+/** Interface definition of a generic MediaCard, which in its concrete form can be an Audio, Animation or Video card */
+export interface IMediaCard {
+
+    /** Title of the Card */
+    title: string; 
+
+    /** Subtitle appears just below Title field, differs from Title in font styling only */
+    subtitle: string; 
+
+    /** Text field appears just below subtitle, differs from Subtitle in font styling only */ 
+    text: string; 
+
+    /** Messaging supports all media formats: audio, video, images and thumbnails as well to optimize content download.*/ 
+    image: ICardImage;
+
+    /** Media source for video, audio or animations */
+    media: ICardMediaUrl[];
+
+    /** Set of actions applicable to the current card */
+    buttons?: ICardAction[]; 
+
+    /** Should the media source reproduction run in a loop */
+    autoloop: boolean; 
+    
+    /** Should the media start automatically */
+    autostart: boolean;
+    
+    /** Should media be shareable */
+    shareable: boolean; 
+}
+
+/** Url information describing media for a card */
+export interface ICardMediaUrl {
+
+    /** Url to audio, video or animation media */
+    url: string; 
+
+    /** Optional profile hint to the client to differentiate multiple MediaUrl objects from each other */
+    profile: string ;
 }
 
 //=============================================================================
@@ -1258,6 +1356,17 @@ export class Session {
      * @param args (Optional) arguments used to format the final output text when __message__ is a _{string|string[]}_.
      */
     send(message: string|string[]|IMessage|IIsMessage, ...args: any[]): Session;
+
+    /**
+     * Sends a message to a user using a specific localization namespace. 
+     * @param localizationNamespace Namespace to use for localizing the message.
+     * @param message 
+     * * __message:__ _{string}_ - Text of the message to send. The message will be localized using the sessions configured localizer. If arguments are passed in the message will be formatted using [sprintf-js](https://github.com/alexei/sprintf.js).
+     * * __message:__ _{string[]}_ - The sent message will be chosen at random from the array.
+     * * __message:__ _{IMessage|IIsMessage}_ - Message to send. 
+     * @param args (Optional) arguments used to format the final output text when __message__ is a _{string|string[]}_.
+     */
+    sendLocalized(localizationNamespace: string, message: string|string[]|IMessage|IIsMessage, ...args: any[]): Session;
 
     /**
      * Sends the user an indication that the bot is typing. For long running operations this should be called every few seconds. 
@@ -1625,8 +1734,27 @@ export class CardImage implements IIsCardImage {
     static create(session: Session, url: string): CardImage;
 }
 
+/** Card builder class that simplifies building keyboard cards. */
+export class Keyboard implements IIsAttachment {
+
+    /** 
+     * Creates a new ThumbnailCard. 
+     * @param session (Optional) will be used to localize any text. 
+     */
+    constructor(session?: Session);
+
+    /** Session object for the current conversation. */
+    protected session?: Session;
+
+    /** Set of actions applicable to the current card. Not all channels support buttons or cards with buttons. Some channels may choose to render the buttons using a custom keyboard. */  
+    buttons(list: ICardAction[]|IIsCardAction[]): ThumbnailCard;
+
+    /** Returns the JSON for the card */
+    toAttachment(): IAttachment;
+}
+
 /** Card builder class that simplifies building thumbnail cards. */
-export class ThumbnailCard implements IIsAttachment {
+export class ThumbnailCard extends Keyboard {
 
     /** 
      * Creates a new ThumbnailCard. 
@@ -1645,15 +1773,106 @@ export class ThumbnailCard implements IIsAttachment {
     
     /** Messaging supports all media formats: audio, video, images and thumbnails as well to optimize content download. */  
     images(list: ICardImage[]|IIsCardImage[]): ThumbnailCard;
-
-    /** Set of actions applicable to the current card. Not all channels support buttons or cards with buttons. Some channels may choose to render the buttons using a custom keyboard. */  
-    buttons(list: ICardAction[]|IIsCardAction[]): ThumbnailCard;
     
     /** This action will be activated when user taps on the card. Not all channels support tap actions and some channels may choose to render the tap action as the titles link. */  
     tap(action: ICardAction|IIsCardAction): ThumbnailCard;
+}
 
-    /** Returns the JSON for the card, */
+/** Card builder class that simplifies building Video cards. */
+export class VideoCard extends MediaCard implements IIsAttachment {
+    
+    /** 
+     * Creates a new VideoCard. 
+     * @param session (Optional) will be used to localize any text. 
+     */
+    constructor(session?: Session);
+    aspect(text: string|string[], ...args: any[]): this;
+}
+
+/** Card builder class that simplifies building Animation cards. */
+export class AnimationCard extends MediaCard implements IIsAttachment {
+
+    /** 
+     * Creates a new AnimationCard. 
+     * @param session (Optional) will be used to localize any text. 
+     */
+    constructor(session?: Session);
+}
+
+/** Card builder class that simplifies building Media cards. */
+export class AudioCard extends MediaCard implements IIsAttachment{
+
+    /** 
+     * Creates a new Audio. 
+     * @param session (Optional) will be used to localize any text. 
+     */
+    constructor(session?: Session); 
+}
+
+/** Card builder class that simplifies building Media cards. */
+export class MediaCard  implements IIsAttachment{
+
+    /** 
+     * Creates a new MediaCard. 
+     * @param session (Optional) will be used to localize any text. 
+     */
+    constructor(session?: Session);
+    
+    /** Title of the Card */
+    title(text: string|string[], ...args: any[]): this;
+
+    /** Subtitle appears just below Title field, differs from Title in font styling only */
+    subtitle(text: string|string[], ...args: any[]): this;
+    
+    /** Text field appears just below subtitle, differs from Subtitle in font styling only */
+    text(text: string|string[], ...args: any[]): this;
+    
+    /** Messaging supports all media formats: audio, video, images and thumbnails as well to optimize content download.*/
+    image(image: ICardImage|IIsCardImage): this;
+
+    /** Media source for video, audio or animations */
+    media(list: ICardMediaUrl[]): this;
+        
+    /** Returns the JSON for the card*/
     toAttachment(): IAttachment;
+
+    /** Should the media source reproduction run in a loop */
+    autoloop(choice: boolean): this;
+    
+    /** Should the media start automatically */
+    autostart(choice: boolean): this;
+
+    /** Should media be shareable */
+    shareable(choice: boolean): this;  
+}
+
+/** Entities that can be converted to Media for cards */
+export interface IIsCardMedia{
+
+    /** Returns the url definition for a Media entity for a card */
+    toMedia(): ICardMediaUrl; 
+}
+
+/** Definition of a media entity for a card */
+export class CardMedia implements IIsCardMedia{
+    
+    /** 
+     * Creates a new CardMedia, which defines a media entity for a card. 
+     * @param session (Optional) will be used to localize any text. 
+     */
+    constructor(session?: Session);
+    
+    /** Url of the media */
+    url(u: string): this;
+    
+    /** Optional profile hint to the client to differentiate multiple MediaUrl objects from each other */
+    profile(text: string): this;
+    
+    /** Returns the url definition for a Media entity for a card */    
+    toMedia(): ICardMediaUrl;
+
+    /** Factory method for creation of Card media entities */
+    static create(session: Session, url: string): CardMedia;
 }
 
 /** Card builder class that simplifies building hero cards. Hero cards contain the same information as a thumbnail card, just with a larger more pronounced layout for the cards images. */
@@ -1790,6 +2009,12 @@ export class Fact implements IIsFact {
  */
 export class ActionSet {
     /**
+     * Returns a clone of an existing ActionSet.
+     * @param copyTo (Optional) instance to copy the current object to. If missing a new instance will be created.
+     */
+    clone(copyTo?: ActionSet): ActionSet;
+
+    /**
      * Called once for each dialog within a library to give the dialog a chance to add its 
      * `triggerAction()` to the libraries global action set.  These triggers get mapped to
      * a `beginDialogAction()` that starts the dialog when the trigger condition is met.
@@ -1844,6 +2069,17 @@ export abstract class Dialog extends ActionSet {
      */
     dialogResumed<T>(session: Session, result: IDialogResult<T>): void;
 
+    /**
+     * Called when a root dialog is being interrupted by another dialog. This gives the dialog
+     * that's being interrupted a chance to run custom logic before it's removed from the stack.
+     * 
+     * The dialog itself is responsible for clearing the dialog stack and starting the new dialog.
+     * @param session Session object for the current conversation.
+     * @param dialogId ID of the dialog that should be started.
+     * @param dialogArgs Arguments that should be passed to the new dialog.
+     */
+    dialogInterrupted(session: Session, dialogId: string, dialogArgs: any): void;
+
     /** 
      * Parses the users utterance and assigns a score from 0.0 - 1.0 indicating how confident the 
      * dialog is that it understood the users utterance.  This method is always called for the active
@@ -1869,13 +2105,15 @@ export abstract class Dialog extends ActionSet {
 
     /**
      * Binds an action to the dialog that will make it the active dialog anytime its triggered.
-     * The default behaviour is to simply push the dialog onto the existing stack such that the
-     * previous task will continue once the new dialog ends. This behaviour can easily be 
-     * modified by adding a custom [onSelectAction](/en-us/node/builder/chat-reference/interfaces/_botbuilder_d_.ibegindialogactionsoptions#onselectaction)
-     * handler to your options.
+     * The default behaviour is to interupt any existing dialog by clearing the stack and starting 
+     * the dialog at the root of the stack.  The dialog being interrupted can intercept this 
+     * interruption by adding a custom [onInterrupted](/en-us/node/builder/chat-reference/interfaces/_botbuilder_d_.itriggeractionsoptions#oninterrupted) 
+     * handler to their trigger action options.  Additionally, you can customize the way the 
+     * triggered dialog is started by providing a custom [onSelectAction](/en-us/node/builder/chat-reference/interfaces/_botbuilder_d_.ibegindialogactionsoptions#onselectaction)
+     * handler to your trigger action options.
      * @param options Options used to configure the action.
      */
-    triggerAction(options: IBeginDialogActionOptions): Dialog;
+    triggerAction(options: ITriggerActionOptions): Dialog;
 
     /**
      * Binds an action to the dialog that will cancel the dialog anytime its triggered. When canceled, the 
@@ -2031,6 +2269,13 @@ export class Library {
      */
     constructor(name: string);
 
+    /**
+     * Returns a clone of an existing Library.
+     * @param copyTo (Optional) instance to copy the current object to. If missing a new instance will be created.
+     * @param newName (Optional) if specified the returned copy will be renamed to a new name.
+     */
+    clone(copyTo?: Library, newName?: string): Library;
+
     /** 
      * Gets or sets the path to the libraries "/locale/" folder containing its localized prompts. 
      * The prompts for the library should be stored in a "/locale/<IETF_TAG>/<NAMESPACE>.json" file
@@ -2044,12 +2289,12 @@ export class Library {
      * Attempts to match a users text utterance to an intent using the libraries recognizers. See 
      * [IIntentRecognizer.recognize()](/en-us/node/builder/chat-reference/interfaces/_botbuilder_d_.iintentrecognizer#recognize) 
      * for details.
-     * @param session Session object for the current conversation.
+     * @param context Read-only recognizer context for the current conversation.
      * @param callback Function that should be invoked upon completion of the recognition.
      * @param callback.err Any error that occured during the operation.
      * @param callback.result The result of the recognition operation. 
      */
-    recognize(session: Session, callback: (err: Error, result: IIntentRecognizerResult) => void): void;
+    recognize(context: IRecognizeContext, callback: (err: Error, result: IIntentRecognizerResult) => void): void;
 
     /**
      * Adds a new recognizer plugin to the library.
@@ -2065,12 +2310,12 @@ export class Library {
      * The default search logic can be overriden using [onFindRoute()](#onfindroute) and only the
      * current library is searched so you should call `findRoutes()` seperately for each library 
      * within the hierarchy.
-     * @param session Session object for the current conversation.
+     * @param context Read-only recognizer context for the current conversation.
      * @param callback Function that should be invoked with the found routes.
      * @param callback.err Any error that occured during the operation.
      * @param callback.routes List of routes best suited to handle the current message. 
      */
-    findRoutes(session: Session, callback: (err: Error, routes: IRouteResult[]) => void): void
+    findRoutes(context: IRecognizeContext, callback: (err: Error, routes: IRouteResult[]) => void): void
 
     /**
      * Replaces [findRoutes()](#findroutes) default route searching logic with a custom 
@@ -2091,19 +2336,18 @@ export class Library {
      * Replaces the default logic for [selectRoute()](#selectroute) with a custom implementation.
      * @param handler Function that will be invoked anytime `selectRoute()` is called. 
      */
-    onSelectRoute(handler: ISelectRoutheandler): void;
+    onSelectRoute(handler: ISelectRouteHandler): void;
 
     /**
      * Gets the active dialogs confidence that it understands the current message. The dialog 
      * must be a member of the current library, otherwise a score of 0.0 will be returned.
-     * @param session Session object for the current conversation.
-     * @param topIntent (Optional) top intent identified from a previous call to [Library.recognize()](#recognize). This can be `null`.
+     * @param context Read-only recognizer context for the current conversation.
      * @param callback Function that should be invoked with the found routes.
      * @param callback.err Any error that occured during the operation.
      * @param callback.routes List of routes best suited to handle the current message.
      * @param dialogStack (Optional) dialog stack to search over. The default behaviour is to search over the sessions current dialog stack. 
      */
-    findActiveDialogRoutes(session: Session, topIntent: IIntentRecognizerResult, callback: (err: Error, routes: IRouteResult[]) => void, dialogStack?: IDialogState[]): void;
+    findActiveDialogRoutes(context: IRecognizeContext, callback: (err: Error, routes: IRouteResult[]) => void, dialogStack?: IDialogState[]): void;
 
     /**
      * Routes the current message to the active dialog.
@@ -2114,14 +2358,13 @@ export class Library {
 
     /**
      * Searches the sessions dialog stack to see if any actions have been triggered.
-     * @param session Session object for the current conversation.
-     * @param topIntent (Optional) top intent identified from a previous call to [Library.recognize()](#recognize). This can be `null`.
+     * @param context Read-only recognizer context for the current conversation.
      * @param callback Function that should be invoked with the found routes.
      * @param callback.err Any error that occured during the operation.
      * @param callback.routes List of routes best suited to handle the current message.
      * @param dialogStack (Optional) dialog stack to search over. The default behaviour is to search over the sessions current dialog stack. 
      */
-    findStackActionRoutes(session: Session, topIntent: IIntentRecognizerResult, callback: (err: Error, routes: IRouteResult[]) => void, dialogStack?: IDialogState[]): void;
+    findStackActionRoutes(context: IRecognizeContext, callback: (err: Error, routes: IRouteResult[]) => void, dialogStack?: IDialogState[]): void;
 
     /**
      * Routes the current message to a triggered stack action.
@@ -2132,13 +2375,12 @@ export class Library {
 
     /**
      * Searches the library to see if any global actions have been triggered.
-     * @param session Session object for the current conversation.
-     * @param topIntent (Optional) top intent identified from a previous call to [Library.recognize()](#recognize). This can be `null`.
+     * @param context Read-only recognizer context for the current conversation.
      * @param callback Function that should be invoked with the found routes.
      * @param callback.err Any error that occured during the operation.
      * @param callback.routes List of routes best suited to handle the current message.
      */
-    findGlobalActionRoutes(session: Session, topIntent: IIntentRecognizerResult, callback: (err: Error, routes: IRouteResult[]) => void): void;
+    findGlobalActionRoutes(context: IRecognizeContext, callback: (err: Error, routes: IRouteResult[]) => void): void;
 
     /**
      * Routes the current message to a triggered global action.
@@ -2335,6 +2577,28 @@ export class Prompts extends Dialog {
      * @param options (Optional) parameters to control the behaviour of the prompt.
      */
     static attachment(session: Session, prompt: string|string[]|IMessage|IIsMessage, options?: IPromptOptions): void;
+
+    /**
+     * Prompts the user to disambiguate multiple triggered actions. Should typically be called 
+     * from [UniversalBot.onDisambiguateRoute()](/en-us/node/builder/chat-reference/classes/_botbuilder_d_.universalbot#ondisambiguateroute).  
+     * @example
+     * <pre><code>
+     * builder.Prompts.disambiguate(session, "What would you like to cancel?", {
+     *      "Cancel Item": cancelItemRoute,
+     *      "Cancel Order": cancelOrderRoute,
+     *      "Neither": null
+     * });
+     * </code></pre>
+     * @param session Session object for the current conversation.
+     * @param prompt 
+     * * __prompt:__ _{string}_ - Initial message to send the user.
+     * * __prompt:__ _{string[]}_ - Array of possible messages to send user. One will be chosen at random. 
+     * * __prompt:__ _{IMessage|IIsMessage}_ - Initial message to send the user. Message can contain attachments. 
+     * @param choices Map of routes to select from. The key is the choice label taht will be displayed to the user.
+     * @param options (Optional) parameters to control the behaviour of the prompt.
+     */
+    static disambiguate(session: Session, prompt: string|string[]|IMessage|IIsMessage, choices: IDisambiguateChoices, options?: IPromptOptions): void;
+
 }
 
 /**
@@ -2353,11 +2617,20 @@ export class SimplePromptRecognizer implements IPromptRecognizer {
 
 /** Federates a recognize() call across a set of intent recognizers. */
 export class IntentRecognizerSet implements IIntentRecognizer {
+    /** Number of recognizers in the set. */
+    readonly length: number;
+
     /**  
      * Constructs a new instance of an IntentRecognizerSet.
      * @param options (Optional) options used to initialize the set and control the flow of recognition.
      */
     constructor(options?: IIntentRecognizerSetOptions);
+
+    /**
+     * Returns a clone of an existing IntentRecognizerSet.
+     * @param copyTo (Optional) instance to copy the current object to. If missing a new instance will be created.
+     */
+    clone(copyTo?: IntentRecognizerSet): IntentRecognizerSet;
 
     /** Attempts to match a users text utterance to an intent. See [IIntentRecognizer.recognize()](/en-us/node/builder/chat-reference/interfaces/_botbuilder_d_.iintentrecognizer#recognize) for details. */
     recognize(context: IRecognizeContext, callback: (err: Error, result: IIntentRecognizerResult) => void): void;
@@ -2623,10 +2896,17 @@ export class UniversalBot extends Library  {
     /** 
      * Creates a new instance of the UniversalBot.
      * @param connector (Optional) the default connector to use for requests. If there's not a more specific connector registered for a channel then this connector will be used./**
-     * @param settings (Optional) settings to configure the bot with.
+     * @param defaultDialog (Optional) default handler of received messages. This can either be an individual function or a waterfall sequence.
      * @param libraryName (Optional) library namespace for the bot.  The default value is '*'.
      */
-    constructor(connector?: IConnector, settings?: IUniversalBotSettings, libraryName?: string);
+    constructor(connector?: IConnector, defaultDialog?: IDialogWaterfallStep|IDialogWaterfallStep[], libraryName?: string);
+
+    /**
+     * Returns a clone of an existing bot.
+     * @param copyTo (Optional) instance to copy the current object to. If missing a new instance will be created.
+     * @param newName (Optional) if specified the returned copy will be renamed to a new name.
+     */
+    clone(copyTo?: UniversalBot, newName?: string): UniversalBot;
 
     /**
      * Registers an event listener. The bot will emit its own events as it process incoming and outgoing messages. It will also forward activity related events emitted from the connector, giving you one place to listen for all activity from your bot. The flow of events from the bot is as follows:
@@ -2662,6 +2942,7 @@ export class UniversalBot extends Library  {
      * - __incoming:__ An incoming message has been received and processed by middleware. Passed an [IMessage](/en-us/node/builder/chat-reference/interfaces/_botbuilder_d_.imessage.html) object.
      * - __routing:__ An incoming message has been bound to a session and is about to be routed through any session middleware and then dispatched to the active dialog for processing. Passed a [Session](/en-us/node/builder/chat-reference/classes/_botbuilder_d_.session.html) object.
      * - __send:__ An outgoing message is about to be sent to middleware for processing. Passed an [IMessage](/en-us/node/builder/chat-reference/interfaces/_botbuilder_d_.imessage.html) object.
+     * - __outgoing:__ An outgoing message has just been sent through middleware and is about to be delivered to the users chat client.
      * - __getStorageData:__ The sessions persisted state data is being loaded from storage. Passed an [IBotStorageContext](/en-us/node/builder/chat-reference/interfaces/_botbuilder_d_.ibotstoragecontext.html) object.
      * - __saveStorageData:__ The sessions persisted state data is being written to storage. Passed an [IBotStorageContext](/en-us/node/builder/chat-reference/interfaces/_botbuilder_d_.ibotstoragecontext.html) object.
      * 
@@ -2732,6 +3013,12 @@ export class UniversalBot extends Library  {
      * @param callback Function to invoke with the results of the query.
      */
     isInConversation(address: IAddress, callback: (err: Error, lastAccess: Date) => void): void;
+
+    /**
+     * Replaces the bots default route disambiguation logic with a custom implementation.
+     * @param handler Function that will be invoked with the candidate routes to dispatch an incoming message to. 
+     */
+    onDisambiguateRoute(handler: IDisambiguateRouteHandler): void;
 }
 
 /** Connects a UniversalBot to multiple channels via the Bot Framework. */

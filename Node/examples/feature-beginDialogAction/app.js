@@ -1,6 +1,6 @@
 /*-----------------------------------------------------------------------------
 This Bot demonstrates how to use beginDialogAction() to create actions that are
-only in scope when a particular dialog is on teh stack. The '/orderPizza' adds
+only in scope when a particular dialog is on the stack. The '/orderPizza' adds
 actions that let the user view their cart and checkout but those actions can 
 only be taken while the user is actually ordering a pizza.
 
@@ -8,7 +8,10 @@ This sample also shows how support multi-level cancel within a bot. When
 ordering a pizza you can cancel either an item you're adding or the entire 
 order.  The user can say "cancel order" at anytime to cancel the order but 
 saying just "cancel" will intelligently cancel either the current item being 
-added or the order depending on where the user is in the flow.
+added or the order depending on where the user is in the flow. 
+
+View the "feature-onDisambiguateRoute" example to see how you'd prompt the user
+to disambiguate between "cancel item" and "cancel order".  
 
 # RUN THE BOT:
 
@@ -19,45 +22,43 @@ added or the order depending on where the user is in the flow.
 
 var builder = require('../../core/');
 
+// Setup bot and default message handler
 var connector = new builder.ConsoleConnector().listen();
-var bot = new builder.UniversalBot(connector);
-
-// Add default dialog
-bot.dialog('/', function (session) {
+var bot = new builder.UniversalBot(connector, function (session) {
     session.send("Say 'order pizza' to start a new order. ")
 });
 
-bot.dialog('/orderPizza', [
-    function (session) {
-        if (!session.userData.cart) {
+// Add dialog to manage ordering a pizza
+bot.dialog('orderPizzaDialog', [
+    function (session, args) {
+        if (!args.continueOrder) {
             session.userData.cart = [];
             session.send("At anytime you can say 'cancel order', 'view cart', or 'checkout'.")
         }
         builder.Prompts.choice(session, "What would you like to add?", "Pizza|Drinks|Extras");
     },
     function (session, results) {
-        session.beginDialog('/add' + results.response.entity);
+        session.beginDialog('add' + results.response.entity);
     },
     function (session, results) {
         if (results.response) {
             session.userData.cart.push(results.response);
         }
-        session.replaceDialog('/orderPizza');
+        session.replaceDialog('orderPizzaDialog', { continueOrder: true });
     }
 ]).triggerAction({ 
-        matches: /^order pizza/i,
-        onSelectAction: function (session, args, next) {
-            switchTasks(session, args, next, "You're already ordering a pizza.");
-        }
+        matches: /order.*pizza/i,
+        confirmPrompt: "This will cancel the current order. Are you sure?"
   })
-  .cancelAction('cancelOrder', "Order canceled.", { 
-      matches: /^(cancel order|cancel)/i,
+  .cancelAction('cancelOrderAction', "Order canceled.", { 
+      matches: /(cancel.*order|^cancel)/i,
       confirmPrompt: "Are you sure?"
   })
-  .beginDialogAction('viewCart', '/viewCart', { matches: /^view cart/i })
-  .beginDialogAction('checkout', '/checkout', { matches: /^checkout/i });
+  .beginDialogAction('viewCartAction', 'viewCartDialog', { matches: /view.*cart/i })
+  .beginDialogAction('checkoutAction', 'checkoutDialog', { matches: /checkout/i });
 
-bot.dialog('/addPizza', [
+// Add pizza menu option
+bot.dialog('addPizza', [
     function (session) {
         builder.Prompts.choice(session, "What kind of pizza?", "Hawaiian|Meat Lovers|Supreme");
     },
@@ -69,27 +70,30 @@ bot.dialog('/addPizza', [
         var item = results.response.entity + ' ' + session.dialogData.pizza + ' Pizza';
         session.endDialogWithResult({ response: item });
     }
-]).cancelAction('cancelItem', "Item canceled.", { matches: /^(cancel item|cancel)/i });
+]).cancelAction('cancelItemAction', "Item canceled.", { matches: /(cancel.*item|^cancel)/i });
 
-bot.dialog('/addDrinks', [
+// Add drink menu option
+bot.dialog('addDrinks', [
     function (session) {
         builder.Prompts.choice(session, "What kind of 2 Liter drink?", "Coke|Sprite|Pepsi");
     },
     function (session, results) {
         session.endDialogWithResult({ response: '2 Liter ' + results.response.entity });
     }
-]).cancelAction('cancelItem', "Item canceled.", { matches: /^(cancel item|cancel)/i });
+]).cancelAction('cancelItemAction', "Item canceled.", { matches: /(cancel.*item|^cancel)/i });
 
-bot.dialog('/addExtras', [
+// Add extras menu option
+bot.dialog('addExtras', [
     function (session) {
         builder.Prompts.choice(session, "What kind of extra?", "Salad|Breadsticks|Wings");
     },
     function (session, results) {
         session.endDialogWithResult({ response: results.response.entity });
     }
-]).cancelAction('cancelItem', "Item canceled.", { matches: /^(cancel item|cancel)/i });
+]).cancelAction('cancelItemAction', "Item canceled.", { matches: /(cancel.*item|^cancel)/i });
 
-bot.dialog('/viewCart', function (session) {
+// Dialog for showing the users cart
+bot.dialog('viewCartDialog', function (session) {
     var msg;
     var cart = session.userData.cart;
     if (cart.length > 0) {
@@ -103,7 +107,8 @@ bot.dialog('/viewCart', function (session) {
     session.endDialog(msg);
 });
 
-bot.dialog('/checkout', function (session) {
+// Dialog for checking out
+bot.dialog('checkoutDialog', function (session) {
     var msg;
     var cart = session.userData.cart;
     if (cart.length > 0) {
@@ -114,17 +119,3 @@ bot.dialog('/checkout', function (session) {
     delete session.userData.cart;
     session.endConversation(msg);
 });
-
-function switchTasks(session, args, next, alreadyActiveMessage) {
-    // Check to see if we're already active.
-    // - We're assuming that we're being called from a triggerAction() some
-    //   args.action is the fully qualified dialog ID.
-    var stack = session.dialogStack();
-    if (builder.Session.findDialogStackEntry(stack, args.action) >= 0) {
-        session.send(alreadyActiveMessage);
-    } else {
-        // Clear stack and switch tasks
-        session.clearDialogStack();
-        next();
-    }
-}

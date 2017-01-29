@@ -1,10 +1,11 @@
 "use strict";
-var async = require('async');
+var utils = require("../utils");
+var async = require("async");
+var RecognizeOrder;
 (function (RecognizeOrder) {
     RecognizeOrder[RecognizeOrder["parallel"] = 0] = "parallel";
     RecognizeOrder[RecognizeOrder["series"] = 1] = "series";
-})(exports.RecognizeOrder || (exports.RecognizeOrder = {}));
-var RecognizeOrder = exports.RecognizeOrder;
+})(RecognizeOrder = exports.RecognizeOrder || (exports.RecognizeOrder = {}));
 var IntentRecognizerSet = (function () {
     function IntentRecognizerSet(options) {
         if (options === void 0) { options = {}; }
@@ -24,7 +25,13 @@ var IntentRecognizerSet = (function () {
         if (!this.options.hasOwnProperty('stopIfExactMatch')) {
             this.options.stopIfExactMatch = true;
         }
+        this.length = this.options.recognizers.length;
     }
+    IntentRecognizerSet.prototype.clone = function (copyTo) {
+        var obj = copyTo || new IntentRecognizerSet(utils.clone(this.options));
+        obj.options.recognizers = this.options.recognizers.slice(0);
+        return obj;
+    };
     IntentRecognizerSet.prototype.recognize = function (context, done) {
         if (this.options.recognizeOrder == RecognizeOrder.parallel) {
             this.recognizeInParallel(context, done);
@@ -35,6 +42,7 @@ var IntentRecognizerSet = (function () {
     };
     IntentRecognizerSet.prototype.recognizer = function (plugin) {
         this.options.recognizers.push(plugin);
+        this.length++;
         return this;
     };
     IntentRecognizerSet.prototype.recognizeInParallel = function (context, done) {

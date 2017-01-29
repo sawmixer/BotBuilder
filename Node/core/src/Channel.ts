@@ -32,10 +32,12 @@
 //
 
 import { Session } from './Session';
+import { IRecognizeContext } from './dialogs/IntentRecognizerSet';
 
 export var channels = {
     facebook: 'facebook',
     skype: 'skype',
+    msteams: 'msteams',
     telegram: 'telegram',
     kik: 'kik',
     email: 'email',
@@ -44,6 +46,7 @@ export var channels = {
     sms: 'sms',
     emulator: 'emulator',
     directline: 'directline',
+    webchat: 'webchat',
     console: 'console'
 };
 
@@ -55,7 +58,6 @@ export function supportsKeyboards(session: Session, buttonCnt = 100) {
             return (buttonCnt <= 20);
         case channels.slack:
         case channels.telegram:
-        case channels.emulator:
             return (buttonCnt <= 100);
         default:
             return false;
@@ -66,15 +68,19 @@ export function supportsCardActions(session: Session, buttonCnt = 100) {
     switch (getChannelId(session)) {
         case channels.facebook:
         case channels.skype:
+        case channels.msteams:
             return (buttonCnt <= 3);
         case channels.slack:
+        case channels.emulator:
+        case channels.directline:
+        case channels.webchat:
             return (buttonCnt <= 100);
         default:
             return false;
     }
 }
 
-export function getChannelId(addressable: Session|IMessage|IAddress): string {
+export function getChannelId(addressable: Session|IRecognizeContext|IMessage|IAddress): string {
     var channelId: string;
     if (addressable) {
         if (addressable.hasOwnProperty('message')) {

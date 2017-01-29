@@ -54,6 +54,11 @@ export interface IBeginDialogActionOptions extends IDialogActionOptions {
     dialogArgs?: any;
 }
 
+export interface ITriggerActionOptions extends IBeginDialogActionOptions {
+    confirmPrompt?: string;
+    onInterrupted?: (session: Session, dialogId: string, dialogArgs?: any, next?: Function) => void;
+}
+
 export interface ICancelActionOptions extends IDialogActionOptions {
     confirmPrompt?: string|string[]|IMessage|IIsMessage;
 }
@@ -68,17 +73,25 @@ export interface IActionRouteData {
 }
 
 export interface IFindActionRouteContext extends IRecognizeContext {
-    intent?: IIntentRecognizerResult;
-    libraryName: string;
     routeType: string;
 }
 
 export class ActionSet {
     private actions: { [name: string]: IActionHandlerEntry; } = {};
-    private trigger: IBeginDialogActionOptions;
+    private trigger: IInteruptDialogOptions;
+
+    public clone(copyTo?: ActionSet): ActionSet {
+        var obj = copyTo || new ActionSet();
+        obj.trigger = this.trigger;
+        for (var name in this.actions) {
+            obj.actions[name] = this.actions[name];
+        }
+        return obj;
+    }
 
     public addDialogTrigger(actions: ActionSet, dialogId: string): void {
         if (this.trigger) {
+            this.trigger.localizationNamespace = dialogId.split(':')[0];
             actions.beginDialogAction(dialogId, dialogId, this.trigger);
         }
     }
@@ -157,7 +170,6 @@ export class ActionSet {
                 addRoute({
                    score: 1.0,
                    libraryName: context.libraryName,
-                   label: options.label || name,
                    routeType: context.routeType,
                    routeData: routeData
                 });
@@ -173,7 +185,6 @@ export class ActionSet {
                             addRoute({
                                 score: score,
                                 libraryName: context.libraryName,
-                                label: entry.options.label || action,
                                 routeType: context.routeType,
                                 routeData: routeData
                             });
@@ -186,7 +197,6 @@ export class ActionSet {
                             addRoute({
                                 score: score,
                                 libraryName: context.libraryName,
-                                label: entry.options.label || name,
                                 routeType: context.routeType,
                                 routeData: routeData
                             });
@@ -220,17 +230,42 @@ export class ActionSet {
         }
     }
 
+    public dialogInterrupted(session: Session, dialogId: string, dialogArgs: any): void {
+        var trigger = this.trigger;
+        function next() {
+            if (trigger && trigger.confirmPrompt) {
+                session.beginDialog(consts.DialogId.ConfirmInterruption, {
+                    dialogId: dialogId,
+                    dialogArgs: dialogArgs,
+                    confirmPrompt: trigger.confirmPrompt,
+                    localizationNamespace: trigger.localizationNamespace
+                });
+            } else {
+                session.clearDialogStack();
+                session.beginDialog(dialogId, dialogArgs);
+            }
+        }
+
+        if (trigger && trigger.onInterrupted) {
+            // Call custom handler
+            this.trigger.onInterrupted(session, dialogId, dialogArgs, next);
+        } else {
+            next();
+        }
+    }
+
     public cancelAction(name: string, msg?: string|string[]|IMessage|IIsMessage, options?: ICancelActionOptions): this {
         return this.action(name, (session, args) => {
             if (options.confirmPrompt) {
                 session.beginDialog(consts.DialogId.ConfirmCancel, {
+                    localizationNamespace: args.libraryName,
                     confirmPrompt: options.confirmPrompt,
                     dialogIndex: args.dialogIndex,
                     message: msg 
                 });
             } else {
                 if (msg) {
-                    session.send(msg)
+                    session.sendLocalized(args.libraryName, msg);
                 }
                 session.cancelDialog(args.dialogIndex);
             }
@@ -240,7 +275,7 @@ export class ActionSet {
     public reloadAction(name: string, msg?: string|string[]|IMessage|IIsMessage, options: IBeginDialogActionOptions = {}): this {
         return this.action(name, (session, args) => {
             if (msg) {
-                session.send(msg)
+                session.sendLocalized(args.libraryName, msg);
             }
             session.cancelDialog(args.dialogIndex, args.dialogId, options.dialogArgs);
         }, options);
@@ -255,7 +290,19 @@ export class ActionSet {
                 var lib = args.dialogId ? args.dialogId.split(':')[0] : args.libraryName;
                 id = lib + ':' + id;
             }
-            session.beginDialog(consts.DialogId.Interruption, { dialogId: id, dialogArgs: args });
+            if (session.sessionState.callstack.length > 0) {
+                if ((<IInteruptDialogOptions>options).isInterruption) {
+                    // Let the root dialog manage interruption
+                    var parts = session.sessionState.callstack[0].id.split(':');
+                    var dialog = session.library.findDialog(parts[0], parts[1]);
+                    dialog.dialogInterrupted(session, id, args);
+                } else  {
+                    // Push an interruption wrapper onto the stack
+                    session.beginDialog(consts.DialogId.Interruption, { dialogId: id, dialogArgs: args });
+                }
+            } else {
+                session.beginDialog(id, args);
+            }
         }, options);
     }
 
@@ -263,19 +310,24 @@ export class ActionSet {
         return this.action(name, (session, args) => {
             if (options.confirmPrompt) {
                 session.beginDialog(consts.DialogId.ConfirmCancel, {
+                    localizationNamespace: args.libraryName,
                     confirmPrompt: options.confirmPrompt,
                     endConversation: true,
                     message: msg 
                 });
             } else {
-                session.endConversation(msg);
+                if (msg) {
+                    session.sendLocalized(args.libraryName, msg);
+                }
+                session.endConversation();
             }
         }, options);
     }
 
-    public triggerAction(options: IBeginDialogActionOptions): this {
+    public triggerAction(options: ITriggerActionOptions): this {
         // Save trigger options. A global beginDialog() action will get setup at runtime.
-        this.trigger = options;
+        this.trigger = <IInteruptDialogOptions>(options || {});
+        this.trigger.isInterruption = true;;
         return this;
     }
 
@@ -287,6 +339,11 @@ export class ActionSet {
         this.actions[name] = { handler: handler, options: options };
         return this;
     }
+}
+
+interface IInteruptDialogOptions extends ITriggerActionOptions {
+    isInterruption: boolean;
+    localizationNamespace?: string;
 }
 
 interface IActionHandlerEntry {

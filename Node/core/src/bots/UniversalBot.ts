@@ -31,7 +31,8 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-import { Library, systemLib } from './Library';
+import { Library, systemLib, IRouteResult } from './Library';
+import { IDialogWaterfallStep } from '../dialogs/SimpleDialog';
 import { Session, ISessionMiddleware } from '../Session';
 import { DefaultLocalizer } from '../DefaultLocalizer';
 import { IBotStorage, IBotStorageContext, IBotStorageData, MemoryBotStorage } from '../storage/BotStorage';
@@ -76,6 +77,11 @@ export interface ILookupUser {
     (address: IAddress, done: (err: Error, user: IIdentity) => void): void;
 }
 
+export interface IDisambiguateRouteHandler {
+    (session: Session, routes: IRouteResult[]): void;
+}
+
+
 export class UniversalBot extends Library {
     private settings = <IUniversalBotSettings>{ 
         processLimit: 4, 
@@ -87,23 +93,47 @@ export class UniversalBot extends Library {
     private mwSend = <IEventMiddleware[]>[];
     private mwSession = <ISessionMiddleware[]>[]; 
     private localizer: DefaultLocalizer;
+    private _onDisambiguateRoute: IDisambiguateRouteHandler;
     
-    
-    constructor(connector?: IConnector, settings?: IUniversalBotSettings, libraryName?: string) {
+    constructor(connector: IConnector, settings?: IUniversalBotSettings);
+    constructor(connector: IConnector, defaultDialog?: IDialogWaterfallStep|IDialogWaterfallStep[], libraryName?: string);
+    constructor(connector?: IConnector, defaultDialog?: any, libraryName?: string) {
         super(libraryName || consts.Library.default);
         this.localePath('./locale/');
         this.library(systemLib);
-        if (settings) {
-            for (var name in settings) {
-                if (settings.hasOwnProperty(name)) {
-                    this.set(name, (<any>settings)[name]);
+        if (defaultDialog) {
+            // Check for legacy settings passed in
+            if (typeof defaultDialog === 'function' || Array.isArray(defaultDialog)) {
+                this.dialog('/', defaultDialog);
+            } else {
+                var settings = <IUniversalBotSettings>defaultDialog;
+                for (var name in settings) {
+                    if (settings.hasOwnProperty(name)) {
+                        this.set(name, (<any>settings)[name]);
+                    }
                 }
             }
         }
-
         if (connector) {
             this.connector(consts.defaultConnector, connector);
         }
+    }
+
+    public clone(copyTo?: UniversalBot, newName?: string): UniversalBot {
+        var obj = copyTo || new UniversalBot(null, null, newName || this.name);
+        for (var name in this.settings) {
+            if (this.settings.hasOwnProperty(name)) {
+                this.set(name, (<any>this.settings)[name]);
+            }
+        }
+        for (var channel in this.connectors) {
+            obj.connector(channel, this.connectors[channel]);
+        }
+        obj.mwReceive = this.mwReceive.slice(0);
+        obj.mwSession = this.mwSession.slice(0);
+        obj.mwSend = this.mwSend.slice(0);
+        // obj.localizer is automatically created based on settings
+        return <UniversalBot>super.clone(obj);
     }
     
     //-------------------------------------------------------------------------
@@ -298,6 +328,11 @@ export class UniversalBot extends Library {
         }, this.errorLogger(<any>cb));
     }
 
+    /** Lets a developer override the bots default route disambiguation logic. */
+    public onDisambiguateRoute(handler: IDisambiguateRouteHandler): void {
+        this._onDisambiguateRoute = handler;
+    }
+
     //-------------------------------------------------------------------------
     // Helpers
     //-------------------------------------------------------------------------
@@ -383,42 +418,63 @@ export class UniversalBot extends Library {
     }
 
     private routeMessage(session: Session, done: (err: Error) => void): void {
-        // Federate across all libraries to find the best route to trigger. 
-        var results = Library.addRouteResult({ score: 0.0, libraryName: this.name });
-        async.each(this.libraryList(), (lib, cb) => {
-            lib.findRoutes(session, (err, routes) => {
-                if (!err && routes) {
-                    routes.forEach((r) => results = Library.addRouteResult(r, results));
-                }
-                cb(err);
-            });
-        }, (err) => {
-            if (!err) {
-                // Select the best route
-                var route = Library.bestRouteResult(results, session.dialogStack(), this.name);
-                if (route) {
-                    this.library(route.libraryName).selectRoute(session, route);
-                } else {
-                    // Just let the active dialog process the message
-                    session.routeToActiveDialog();
-                }
-            } else {
-                // Let the session process the error
-                session.error(err);
+        // Run the root libraries recognizers
+        var context = session.toRecognizeContext();
+        this.recognize(context, (err, topIntent) => {
+            if (topIntent && topIntent.score > 0) {
+                // This intent will be automatically inherited by child libraries
+                // that don't implement their own recognizers.
+                context.intent = topIntent;
+                context.libraryName = this.name;
             }
+
+            // Federate across all libraries to find the best route to trigger. 
+            var results = Library.addRouteResult({ score: 0.0, libraryName: this.name });
+            async.each(this.libraryList(), (lib, cb) => {
+                lib.findRoutes(context, (err, routes) => {
+                    if (!err && routes) {
+                        routes.forEach((r) => results = Library.addRouteResult(r, results));
+                    }
+                    cb(err);
+                });
+            }, (err) => {
+                if (!err) {
+                    // Find disambiguation handler to use
+                    var disambiguateRoute: IDisambiguateRouteHandler = (session, routes) => {
+                        var route = Library.bestRouteResult(results, session.dialogStack(), this.name);
+                        if (route) {
+                            this.library(route.libraryName).selectRoute(session, route);
+                        } else {
+                            // Just let the active dialog process the message
+                            session.routeToActiveDialog();
+                        }
+                    };
+                    if (this._onDisambiguateRoute) {
+                        disambiguateRoute = this._onDisambiguateRoute;
+                    }
+
+                    // Select best route and dispatch message.
+                    disambiguateRoute(session, results);
+                    done(null);
+                } else {
+                    // Let the session process the error
+                    session.error(err);
+                    done(err);
+                }
+            });
         });
     }
 
     private eventMiddleware(event: IEvent, middleware: IEventMiddleware[], done: Function, error?: (err: Error) => void): void {
         var i = -1;
-        var _this = this;
+        var _that = this;
         function next() {
             if (++i < middleware.length) {
-                _this.tryCatch(() => {
+                _that.tryCatch(() => {
                     middleware[i](event, next);
                 }, () => next());
             } else {
-                _this.tryCatch(() => done(), error);
+                _that.tryCatch(() => done(), error);
             }
         }
         next();
